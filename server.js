@@ -9,9 +9,7 @@ app.use(express.json());
 // ============================================
 // COINBASE API SETUP
 // ============================================
-
-const COINBASE_API_URL = 'https://api.exchange.coinbase.com';
-
+const COINBASE_API_URL = 'https://api.coinbase.com';
 // Sign request for Coinbase API (required for all authenticated requests)
 function signRequest(method, path, body = '') {
   const timestamp = Date.now() / 1000;
