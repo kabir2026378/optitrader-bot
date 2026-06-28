@@ -23,8 +23,8 @@ console.log(`   Using JWT Authentication\n`);
 // Create JWT token for Advanced Trade API authentication
 function createJWT(path, method = 'GET') {
   if (!COINBASE_PRIVATE_KEY) {
-    throw new Error('COINBASE_API_SECRET (Private Key) is not set!');
-  }
+   throw new Error('COINBASE_PRIVATE_KEY is not set!');
+      }
   
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + 120; // Token valid for 2 minutes
