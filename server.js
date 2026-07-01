@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
@@ -8,22 +8,22 @@ app.use(express.json());
 
 const COINBASE_API_URL = 'https://api.coinbase.com';
 const COINBASE_API_KEY = process.env.COINBASE_API_KEY_NAME;
-const COINBASE_PRIVATE_KEY = process.env.COINBASE_PRIVATE_KEY;
+const COINBASE_PRIVATE_KEY_B64 = process.env.COINBASE_PRIVATE_KEY;
 const SECURITY_KEY = process.env.SECURITY_KEY;
 
-console.log(`\n✅ Bot with ECDSA JWT\n`);
+console.log(`\n✅ Bot with Ed25519 JWT (Raw Key)\n`);
+
+function base64url(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
 
 function createJWT(path, method = 'GET') {
-  if (!COINBASE_PRIVATE_KEY) throw new Error('COINBASE_PRIVATE_KEY not set');
+  if (!COINBASE_PRIVATE_KEY_B64) throw new Error('COINBASE_PRIVATE_KEY not set');
   
-  let privateKey = COINBASE_PRIVATE_KEY.trim();
-  
-  // Handle both escaped and actual newlines
-  if (!privateKey.includes('\n')) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-  }
+  const privateKeyBuffer = Buffer.from(COINBASE_PRIVATE_KEY_B64, 'base64');
   
   const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'EdDSA', typ: 'JWT', kid: COINBASE_API_KEY };
   const payload = {
     sub: COINBASE_API_KEY,
     iss: 'cdp_service',
@@ -33,7 +33,14 @@ function createJWT(path, method = 'GET') {
     uri: `${method} ${path}`
   };
   
-  return jwt.sign(payload, privateKey, { algorithm: 'ES256' });
+  const headerEncoded = base64url(JSON.stringify(header));
+  const payloadEncoded = base64url(JSON.stringify(payload));
+  const message = `${headerEncoded}.${payloadEncoded}`;
+  
+  const signature = crypto.sign('ed25519', Buffer.from(message), privateKeyBuffer);
+  const signatureEncoded = base64url(signature);
+  
+  return `${message}.${signatureEncoded}`;
 }
 
 app.post('/webhook', async (req, res) => {
