@@ -1,4 +1,3 @@
-cat > server.js << 'EOF'
 const express = require('express');
 const axios = require('axios');
 const { generateJwt } = require("@coinbase/cdp-sdk/auth");
@@ -31,17 +30,9 @@ async function createJWT(path, method = 'GET') {
   return token;
 }
 
-function getAuthHeaders(path, method = 'GET') {
-  return (async () => ({
-    'Authorization': `Bearer ${await createJWT(path, method)}`,
-    'Content-Type': 'application/json'
-  }))();
-}
-
 app.post('/webhook', async (req, res) => {
   try {
     const { action, symbol, size, security_key } = req.body;
-    
     console.log(`\n🔔 Webhook received`);
     
     if (!security_key || security_key !== SECURITY_KEY) {
@@ -117,4 +108,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`\n🤖 Bot started on port ${PORT}\n`);
 });
-EOF
