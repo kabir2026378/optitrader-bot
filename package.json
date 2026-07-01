@@ -1,16 +1,12 @@
-cat > package.json << 'EOF'
 {
   "name": "optitrader-bot",
   "version": "1.0.0",
-  "description": "OptiTrade Pine Script to Coinbase automated trading bot",
+  "description": "OptiTrade automated trading bot",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": ["trading", "crypto", "coinbase", "optitrader"],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "axios": "^1.6.0",
@@ -24,4 +20,3 @@ cat > package.json << 'EOF'
     "node": "18.x"
   }
 }
-EOF
