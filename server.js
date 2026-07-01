@@ -11,7 +11,7 @@ const COINBASE_API_KEY = process.env.COINBASE_API_KEY_NAME;
 const COINBASE_PRIVATE_KEY = process.env.COINBASE_PRIVATE_KEY;
 const SECURITY_KEY = process.env.SECURITY_KEY;
 
-console.log(`\n✅ Bot with Ed25519 Manual JWT\n`);
+console.log(`\n✅ Bot with Ed25519 JWT\n`);
 
 function base64url(buf) {
   return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
@@ -20,7 +20,15 @@ function base64url(buf) {
 function createJWT(path, method = 'GET') {
   if (!COINBASE_PRIVATE_KEY) throw new Error('COINBASE_PRIVATE_KEY not set');
   
-  const privateKeyBuffer = Buffer.from(COINBASE_PRIVATE_KEY, 'base64');
+  // Convert base64 Ed25519 key to PEM
+  const keyBuffer = Buffer.from(COINBASE_PRIVATE_KEY, 'base64');
+  const pem = `-----BEGIN PRIVATE KEY-----\n${keyBuffer.toString('base64').replace(/(.{64})/g, '$1\n')}\n-----END PRIVATE KEY-----`;
+  
+  const privateKey = crypto.createPrivateKey({
+    key: pem,
+    format: 'pem',
+    type: 'pkcs8'
+  });
   
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: 'EdDSA', typ: 'JWT', kid: COINBASE_API_KEY };
@@ -37,7 +45,7 @@ function createJWT(path, method = 'GET') {
   const payloadEncoded = base64url(JSON.stringify(payload));
   const message = `${headerEncoded}.${payloadEncoded}`;
   
-  const signature = crypto.sign('ed25519', Buffer.from(message), privateKeyBuffer);
+  const signature = crypto.sign('ed25519', Buffer.from(message), privateKey);
   const signatureEncoded = base64url(signature);
   
   return `${message}.${signatureEncoded}`;
