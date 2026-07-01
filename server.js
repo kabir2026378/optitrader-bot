@@ -1,7 +1,6 @@
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
-const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
@@ -12,7 +11,11 @@ const COINBASE_API_KEY = process.env.COINBASE_API_KEY_NAME;
 const COINBASE_PRIVATE_KEY = process.env.COINBASE_PRIVATE_KEY;
 const SECURITY_KEY = process.env.SECURITY_KEY;
 
-console.log(`\n✅ Bot Starting with Ed25519 JWT Auth\n`);
+console.log(`\n✅ Bot with Ed25519 Manual JWT\n`);
+
+function base64url(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
 
 function createJWT(path, method = 'GET') {
   if (!COINBASE_PRIVATE_KEY) throw new Error('COINBASE_PRIVATE_KEY not set');
@@ -20,6 +23,7 @@ function createJWT(path, method = 'GET') {
   const privateKeyBuffer = Buffer.from(COINBASE_PRIVATE_KEY, 'base64');
   
   const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'EdDSA', typ: 'JWT', kid: COINBASE_API_KEY };
   const payload = {
     sub: COINBASE_API_KEY,
     iss: 'cdp_service',
@@ -29,7 +33,14 @@ function createJWT(path, method = 'GET') {
     uri: `${method} ${path}`
   };
   
-  return jwt.sign(payload, privateKeyBuffer, { algorithm: 'EdDSA', keyid: COINBASE_API_KEY });
+  const headerEncoded = base64url(JSON.stringify(header));
+  const payloadEncoded = base64url(JSON.stringify(payload));
+  const message = `${headerEncoded}.${payloadEncoded}`;
+  
+  const signature = crypto.sign('ed25519', Buffer.from(message), privateKeyBuffer);
+  const signatureEncoded = base64url(signature);
+  
+  return `${message}.${signatureEncoded}`;
 }
 
 app.post('/webhook', async (req, res) => {
@@ -71,4 +82,4 @@ app.get('/accounts', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🤖 Bot running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🤖 Bot on port ${PORT}`));
