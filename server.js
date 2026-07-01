@@ -1,20 +1,48 @@
 const express = require('express');
-const { Coinbase } = require('@coinbase/coinbase-sdk');
+const axios = require('axios');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const app = express();
 app.use(express.json());
 
+const COINBASE_API_URL = 'https://api.coinbase.com';
 const COINBASE_API_KEY = process.env.COINBASE_API_KEY_NAME;
-const COINBASE_PRIVATE_KEY = process.env.COINBASE_PRIVATE_KEY;
+const COINBASE_PRIVATE_KEY_B64 = process.env.COINBASE_PRIVATE_KEY;
 const SECURITY_KEY = process.env.SECURITY_KEY;
 
-console.log(`\n✅ Bot with @coinbase/coinbase-sdk\n`);
+console.log(`\n✅ Bot with Manual Ed25519 JWT\n`);
 
-const client = Coinbase.configureFromJson({
-  apiKeyName: COINBASE_API_KEY,
-  privateKey: COINBASE_PRIVATE_KEY
-});
+function base64url(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function createJWT(path, method = 'GET') {
+  if (!COINBASE_PRIVATE_KEY_B64) throw new Error('COINBASE_PRIVATE_KEY not set');
+  
+  const privateKeyBuffer = Buffer.from(COINBASE_PRIVATE_KEY_B64, 'base64');
+  
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'EdDSA', typ: 'JWT', kid: COINBASE_API_KEY };
+  const payload = {
+    sub: COINBASE_API_KEY,
+    iss: 'cdp_service',
+    nbf: now,
+    exp: now + 120,
+    iat: now,
+    uri: `${method} ${path}`
+  };
+  
+  const headerEncoded = base64url(JSON.stringify(header));
+  const payloadEncoded = base64url(JSON.stringify(payload));
+  const message = `${headerEncoded}.${payloadEncoded}`;
+  
+  const nacl = require('tweetnacl');
+  const signature = nacl.sign.detached(Buffer.from(message), privateKeyBuffer);
+  const signatureEncoded = base64url(signature);
+  
+  return `${message}.${signatureEncoded}`;
+}
 
 app.post('/webhook', async (req, res) => {
   try {
@@ -23,13 +51,23 @@ app.post('/webhook', async (req, res) => {
     if (!action || !symbol || !size) return res.status(400).json({ success: false, error: 'Missing fields' });
     if (!['buy', 'sell'].includes(action.toLowerCase())) return res.status(400).json({ success: false, error: 'Invalid action' });
     
-    const order = await client.orders.createOrder({
+    const clientOrderId = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const method = 'POST';
+    const requestPath = '/api/v3/brokerage/orders';
+    const body = JSON.stringify({
+      client_order_id: clientOrderId,
       product_id: symbol,
       side: action.toUpperCase(),
       order_configuration: { market_market_ioc: { quote_size: size.toString() } }
     });
     
-    return res.status(200).json({ success: true, order });
+    const token = createJWT(requestPath, method);
+    const response = await axios.post(`${COINBASE_API_URL}${requestPath}`, body, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+    });
+    
+    return res.status(200).json({ success: true, order: response.data.success_response });
   } catch (error) {
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -39,11 +77,14 @@ app.get('/', (req, res) => res.json({ status: 'OK' }));
 
 app.get('/accounts', async (req, res) => {
   try {
-    const accounts = await client.accounts.listAccounts();
-    const balances = accounts.filter(acc => acc.availableBalance?.value > 0);
+    const token = createJWT('/api/v3/brokerage/accounts', 'GET');
+    const response = await axios.get(`${COINBASE_API_URL}/api/v3/brokerage/accounts`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const balances = response.data.accounts.filter(acc => parseFloat(acc.available_balance.value) > 0);
     res.json({ success: true, balances: balances.map(acc => ({ 
       currency: acc.currency, 
-      available: acc.availableBalance?.value 
+      available: acc.available_balance.value 
     })) });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
