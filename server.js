@@ -1,6 +1,6 @@
 const express = require('express');
 const axios = require('axios');
-const crypto = require('crypto');
+const { sign } = require('@noble/ed25519');
 require('dotenv').config();
 
 const app = express();
@@ -11,7 +11,7 @@ const COINBASE_API_KEY = process.env.COINBASE_API_KEY_NAME;
 const COINBASE_PRIVATE_KEY_B64 = process.env.COINBASE_PRIVATE_KEY;
 const SECURITY_KEY = process.env.SECURITY_KEY;
 
-console.log(`\n✅ Bot with Ed25519 JWT (Raw Key)\n`);
+console.log(`\n✅ Bot with Ed25519 (@noble/ed25519)\n`);
 
 function base64url(buf) {
   return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
@@ -37,7 +37,7 @@ function createJWT(path, method = 'GET') {
   const payloadEncoded = base64url(JSON.stringify(payload));
   const message = `${headerEncoded}.${payloadEncoded}`;
   
-  const signature = crypto.sign('ed25519', Buffer.from(message), privateKeyBuffer);
+  const signature = sign(Buffer.from(message), privateKeyBuffer);
   const signatureEncoded = base64url(signature);
   
   return `${message}.${signatureEncoded}`;
