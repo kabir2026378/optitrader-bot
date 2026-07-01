@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -8,40 +9,40 @@ app.use(express.json());
 
 const COINBASE_API_URL = 'https://api.coinbase.com';
 const COINBASE_API_KEY = process.env.COINBASE_API_KEY_NAME;
-const COINBASE_PRIVATE_KEY_B64 = process.env.COINBASE_PRIVATE_KEY;
+const COINBASE_PRIVATE_KEY = process.env.COINBASE_PRIVATE_KEY;
 const SECURITY_KEY = process.env.SECURITY_KEY;
 
-console.log(`\n✅ Bot with Manual Ed25519 JWT\n`);
+console.log(`\n✅ Bot with Coinbase Documented JWT Format\n`);
 
-function base64url(buf) {
-  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
-
-function createJWT(path, method = 'GET') {
-  if (!COINBASE_PRIVATE_KEY_B64) throw new Error('COINBASE_PRIVATE_KEY not set');
+function createJWT(method, path) {
+  if (!COINBASE_PRIVATE_KEY) throw new Error('COINBASE_PRIVATE_KEY not set');
   
-  const privateKeyBuffer = Buffer.from(COINBASE_PRIVATE_KEY_B64, 'base64');
+  let privateKey = COINBASE_PRIVATE_KEY.trim();
+  if (privateKey.includes('\\n')) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
   
   const now = Math.floor(Date.now() / 1000);
-  const header = { alg: 'EdDSA', typ: 'JWT', kid: COINBASE_API_KEY };
+  const uri = `${method} api.coinbase.com${path}`;
+  
   const payload = {
     sub: COINBASE_API_KEY,
-    iss: 'cdp_service',
+    iss: 'cdp',
     nbf: now,
     exp: now + 120,
     iat: now,
-    uri: `${method} ${path}`
+    uri: uri
   };
   
-  const headerEncoded = base64url(JSON.stringify(header));
-  const payloadEncoded = base64url(JSON.stringify(payload));
-  const message = `${headerEncoded}.${payloadEncoded}`;
+  const headers = {
+    kid: COINBASE_API_KEY,
+    nonce: crypto.randomBytes(16).toString('hex')
+  };
   
-  const nacl = require('tweetnacl');
-  const signature = nacl.sign.detached(Buffer.from(message), privateKeyBuffer);
-  const signatureEncoded = base64url(signature);
-  
-  return `${message}.${signatureEncoded}`;
+  return jwt.sign(payload, privateKey, { 
+    algorithm: 'ES256',
+    header: headers
+  });
 }
 
 app.post('/webhook', async (req, res) => {
@@ -52,18 +53,14 @@ app.post('/webhook', async (req, res) => {
     if (!['buy', 'sell'].includes(action.toLowerCase())) return res.status(400).json({ success: false, error: 'Invalid action' });
     
     const clientOrderId = `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const method = 'POST';
-    const requestPath = '/api/v3/brokerage/orders';
-    const body = JSON.stringify({
+    const token = createJWT('POST', '/api/v3/brokerage/orders');
+    
+    const response = await axios.post(`${COINBASE_API_URL}/api/v3/brokerage/orders`, {
       client_order_id: clientOrderId,
       product_id: symbol,
       side: action.toUpperCase(),
       order_configuration: { market_market_ioc: { quote_size: size.toString() } }
-    });
-    
-    const token = createJWT(requestPath, method);
-    const response = await axios.post(`${COINBASE_API_URL}${requestPath}`, body, {
+    }, {
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
     });
     
@@ -77,7 +74,7 @@ app.get('/', (req, res) => res.json({ status: 'OK' }));
 
 app.get('/accounts', async (req, res) => {
   try {
-    const token = createJWT('/api/v3/brokerage/accounts', 'GET');
+    const token = createJWT('GET', '/api/v3/brokerage/accounts');
     const response = await axios.get(`${COINBASE_API_URL}/api/v3/brokerage/accounts`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
