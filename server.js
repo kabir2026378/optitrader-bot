@@ -16,8 +16,10 @@ console.log(`\n✅ Bot with ECDSA JWT\n`);
 function createJWT(path, method = 'GET') {
   if (!COINBASE_PRIVATE_KEY) throw new Error('COINBASE_PRIVATE_KEY not set');
   
-  let privateKey = COINBASE_PRIVATE_KEY.toString().trim();
-  if (privateKey.includes('\\n')) {
+  let privateKey = COINBASE_PRIVATE_KEY.trim();
+  
+  // Handle both escaped and actual newlines
+  if (!privateKey.includes('\n')) {
     privateKey = privateKey.replace(/\\n/g, '\n');
   }
   
