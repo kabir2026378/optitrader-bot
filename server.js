@@ -32,21 +32,20 @@ app.post('/webhook', async (req, res) => {
     const clientOrderId = `order-${Date.now()}-${Math.random().toString(36).substr(2,9)}`;
     const token = createJWT('POST', '/api/v3/brokerage/orders');
     
+    const orderConfig = action.toLowerCase() === 'buy' 
+      ? {market_market_ioc: {quote_size: size.toString()}}
+      : {market_market_ioc: {base_size: size.toString()}};
+    
     const orderBody = {
       client_order_id: clientOrderId,
       product_id: symbol,
       side: action.toUpperCase(),
-      order_configuration: {market_market_ioc: {quote_size: size.toString()}}
+      order_configuration: orderConfig
     };
     
-    console.log(`📤 Sending ${action.toUpperCase()} order:`, orderBody);
-    
     const response = await axios.post(`${COINBASE_API_URL}/api/v3/brokerage/orders`, orderBody, {headers: {'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json'}});
-    
-    console.log(`✅ Coinbase Response:`, JSON.stringify(response.data, null, 2));
     return res.status(200).json({success: true, order: response.data.success_response});
   } catch (error) {
-    console.error(`❌ Error:`, error.response?.data || error.message);
     return res.status(500).json({success: false, error: error.message});
   }
 });
